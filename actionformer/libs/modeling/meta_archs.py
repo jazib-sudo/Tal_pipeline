@@ -440,6 +440,8 @@ class PtTransformer(nn.Module):
         # push to device
         batched_inputs = batched_inputs.to(self.device)
         batched_masks = batched_masks.unsqueeze(1).to(self.device)
+        
+        #anurag changes---1-generate label masks
 
         return batched_inputs, batched_masks
 
