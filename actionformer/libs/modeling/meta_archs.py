@@ -460,6 +460,8 @@ class PtTransformer(nn.Module):
         
         #get masks for the split
         label_masks = torch.logical_and(torch.arange(max_len)[None, :] > split_start, torch.arange(max_len)[None, :] < split_end) #???? indexed from 0or 1?
+        #get labels
+        split_labels = torch.as_tensor(chosen_split_indices).unsqueeze(1) #(B*num_instances*sampled_splits,1) 
         
         #repeat inputs and input masks num_instances*sampled_splits times
         batched_inputs_r = torch.repeat_interleave(batched_inputs, num_instances*sampled_splits, dim=0) 
@@ -468,9 +470,10 @@ class PtTransformer(nn.Module):
         batched_inputs_r = batched_inputs_r.to(self.device) #(B*num_instances*sampled_splits,C,T) 
         batched_masks_r = batched_masks_r.unsqueeze(1).to(self.device) #(B*num_instances*sampled_splits,1,T)
         label_masks = label_masks.unsqueeze(1).to(self.device) #(B*num_instances*sampled_splits,1,T)
+        split_labels =  split_labels.unsqueeze(1).to(self.device) #(B*num_instances*sampled_splits,1)
 
 
-        return batched_inputs_r, batched_masks_r, label_masks 
+        return batched_inputs_r, batched_masks_r, label_masks, split_labels
 
     @torch.no_grad()
     def label_points(self, points, gt_segments, gt_labels):
