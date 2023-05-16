@@ -437,13 +437,40 @@ class PtTransformer(nn.Module):
         # generate the mask
         batched_masks = torch.arange(max_len)[None, :] < feats_lens[:, None]
 
-        # push to device
-        batched_inputs = batched_inputs.to(self.device)
-        batched_masks = batched_masks.unsqueeze(1).to(self.device)
+       
         
         #anurag changes---1-generate label masks
+        num_instances = 2 #number of action segments to use per video
+        segs = [x['segments'] for x in video_list] #list of B tensors of shape N(variable),2
+        num_segs = [s.shape[0] for s in segs] 
+        sampled_indices = [torch.as_tensor(random.sample(range(n),num_instances)) for n in num_segs] #add exception handling later for num_instances < N
+        sampled_segs = torch.cat([torch.index_select(segs[i], 0, sampled_labels[i]) for i in range(len(segs))],0) # Tensor of shape B*num_instances, 2
+        num_splits = 3 # splits per action segment(instance)  --- number of classes at output
+        split_blocks = torch.arange(0, num_splits+1)[None, :]*(sampled_segs[:,1].unsqueeze(1) - sampled_segs[:,0].unsqueeze(1))/num_splits #create the splits end - start/ splits
+        split_positions = split_blocks + sampled_segs[:,0].unsqueeze(1) # split positions within the segment start, start + split_width, start+ 2*split_width, ... , end
+        sampled_splits = 2 #number of split postions to use per segment 
+        split_pos = torch.repeat_interleave(split_positions, sampled_splits, dim=0) #repeat each segment times sampled_splits. tensor shape (B*num_instances*sampled_splits,num_splits+1)
+        chosen_split_indices = [random.randint(0, num_splits-1) for p in range(split_pos.shape[0])] #choose sampled_splits per video-segment pair
+        splits = torch.cat([torch.as_tensor([i,i+1]).unsqueeze(0) for i in chosen_split_indices],0) #tensor of size (B*num_instances*sampled_splits, 2)
+        #get the start and end for the particular chosen split within each segment
+        start_indices = splits[:,0].unsqueeze(1)
+        split_start = torch.gather(split_pos,1,start_indices)
+        end_indices = splits[:,1].unsqueeze(1)
+        split_end = torch.gather(split_pos,1,end_indices)
+        
+        #get masks for the split
+        label_masks = torch.logical_and(torch.arange(max_len)[None, :] > split_start, torch.arange(max_len)[None, :] < split_end) #???? indexed from 0or 1?
+        
+        #repeat inputs and input masks num_instances*sampled_splits times
+        batched_inputs_r = torch.repeat_interleave(batched_inputs, num_instances*sampled_splits, dim=0) 
+        batched_masks_r = torch.repeat_interleave(batched_masks, num_instances*sampled_splits, dim=0) 
+        # push to device
+        batched_inputs_r = batched_inputs_r.to(self.device) #(B*num_instances*sampled_splits,C,T) 
+        batched_masks_r = batched_masks_r.unsqueeze(1).to(self.device) #(B*num_instances*sampled_splits,1,T)
+        label_masks = label_masks.unsqueeze(1).to(self.device) #(B*num_instances*sampled_splits,1,T)
 
-        return batched_inputs, batched_masks
+
+        return batched_inputs_r, batched_masks_r, label_masks 
 
     @torch.no_grad()
     def label_points(self, points, gt_segments, gt_labels):
