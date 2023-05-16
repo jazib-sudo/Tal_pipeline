@@ -333,7 +333,8 @@ class PtTransformer(nn.Module):
 
     def forward(self, video_list):
         # batch the video list into feats (B, C, T) and masks (B, 1, T)
-        batched_inputs, batched_masks = self.preprocessing(video_list)
+        #anurag change----------
+        batched_inputs, batched_masks, label_masks, split_labels = self.preprocessing(video_list)
         print(batched_inputs.shape)
 
         # forward the network (backbone -> neck -> heads)
